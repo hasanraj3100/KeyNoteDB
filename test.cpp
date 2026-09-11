@@ -1,5 +1,6 @@
 #include "command.h"
 #include "parse.h"
+#include "storage.h"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -106,45 +107,112 @@ void runTests() {
 }
 
 void runProcessTokensTests() {
-  expectEq("insert with 3 tokens stores the key=value pair",
-           processTokens({"INSERT", "key", "value"}), "OK: stored key=value");
+  {
+    Storage storage;
+    expectEq("insert with 3 tokens stores the key=value pair",
+             processTokens({"INSERT", "key", "value"}, storage),
+             "OK: stored key=value");
+  }
 
-  expectEq("insert command name is case-insensitive",
-           processTokens({"InSeRt", "key", "value"}), "OK: stored key=value");
+  {
+    Storage storage;
+    expectEq("insert command name is case-insensitive",
+             processTokens({"InSeRt", "key", "value"}, storage),
+             "OK: stored key=value");
+  }
 
-  expectEq("3 tokens with a command other than insert is rejected",
-           processTokens({"GET", "key", "extra"}), "ERR: invalid command");
+  {
+    Storage storage;
+    expectEq("3 tokens with a command other than insert is rejected",
+             processTokens({"GET", "key", "extra"}, storage),
+             "ERR: invalid command");
+  }
 
-  expectEq("get with 2 tokens returns the key", processTokens({"GET", "key"}),
-           "OK: getting key");
+  {
+    Storage storage;
+    processTokens({"INSERT", "key", "value"}, storage);
+    expectEq("get with 2 tokens returns the stored value",
+             processTokens({"GET", "key"}, storage), "OK: key=value");
+  }
 
-  expectEq("get command name is case-insensitive",
-           processTokens({"gEt", "key"}), "OK: getting key");
+  {
+    Storage storage;
+    processTokens({"INSERT", "key", "value"}, storage);
+    expectEq("get command name is case-insensitive",
+             processTokens({"gEt", "key"}, storage), "OK: key=value");
+  }
 
-  expectEq("delete with 2 tokens returns the key",
-           processTokens({"DELETE", "key"}), "OK: deleted key");
+  {
+    Storage storage;
+    expectEq("get on a missing key is rejected",
+             processTokens({"GET", "key"}, storage), "ERR: key not found");
+  }
 
-  expectEq("delete command name is case-insensitive",
-           processTokens({"delete", "key"}), "OK: deleted key");
+  {
+    Storage storage;
+    processTokens({"INSERT", "key", "value"}, storage);
+    expectEq("delete with 2 tokens removes the key",
+             processTokens({"DELETE", "key"}, storage), "OK: deleted key");
+  }
 
-  expectEq("2 tokens with an unrecognized command is rejected",
-           processTokens({"FOO", "key"}), "ERR: invalid command");
+  {
+    Storage storage;
+    processTokens({"INSERT", "key", "value"}, storage);
+    expectEq("delete command name is case-insensitive",
+             processTokens({"delete", "key"}, storage), "OK: deleted key");
+  }
 
-  expectEq("scan with 1 token is accepted", processTokens({"SCAN"}),
-           "OK: scanning ...");
+  {
+    Storage storage;
+    expectEq("delete on a missing key is rejected",
+             processTokens({"DELETE", "key"}, storage),
+             "ERR: invalid delete key");
+  }
 
-  expectEq("scan command name is case-insensitive", processTokens({"scan"}),
-           "OK: scanning ...");
+  {
+    Storage storage;
+    expectEq("2 tokens with an unrecognized command is rejected",
+             processTokens({"FOO", "key"}, storage), "ERR: invalid command");
+  }
 
-  expectEq("1 token that isn't scan is rejected", processTokens({"FOO"}),
-           "ERR: invalid command");
+  {
+    Storage storage;
+    expectEq("scan with no stored data reports empty",
+             processTokens({"SCAN"}, storage), "OK: scanning ... (empty)");
+  }
 
-  expectEq("empty token list is rejected as invalid length", processTokens({}),
-           "ERR: invalid input length");
+  {
+    Storage storage;
+    processTokens({"INSERT", "a", "1"}, storage);
+    processTokens({"INSERT", "b", "2"}, storage);
+    expectEq("scan with stored data returns every key=value pair",
+             processTokens({"SCAN"}, storage), "OK: scanning ... a=1 b=2");
+  }
 
-  expectEq("more than 3 tokens is rejected as invalid length",
-           processTokens({"INSERT", "key", "value", "extra"}),
-           "ERR: invalid input length");
+  {
+    Storage storage;
+    expectEq("scan command name is case-insensitive",
+             processTokens({"scan"}, storage), "OK: scanning ... (empty)");
+  }
+
+  {
+    Storage storage;
+    expectEq("1 token that isn't scan is rejected",
+             processTokens({"FOO"}, storage), "ERR: invalid command");
+  }
+
+  {
+    Storage storage;
+    expectEq("empty token list is rejected as invalid length",
+             processTokens({}, storage), "ERR: invalid input length");
+  }
+
+  {
+    Storage storage;
+    expectEq("more than 3 tokens is rejected as invalid length",
+             processTokens({"INSERT", "key", "value", "extra"}, storage),
+             "ERR: invalid input length");
+  }
 }
 
 int main() {
