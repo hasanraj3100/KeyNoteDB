@@ -1,6 +1,7 @@
 #include "command.h"
 #include "parse.h"
 #include "storage.h"
+#include <cstdio>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -9,6 +10,13 @@ namespace {
 
 int testsRun = 0;
 int testsFailed = 0;
+int tempFileCounter = 0;
+
+std::string makeTempStorageFile() {
+  std::string fileName = "test_tmp_" + std::to_string(tempFileCounter++) + ".log";
+  std::remove(fileName.c_str());
+  return fileName;
+}
 
 std::string toString(const std::vector<std::string> &tokens) {
   std::string out = "{";
@@ -108,81 +116,81 @@ void runTests() {
 
 void runProcessTokensTests() {
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     expectEq("insert with 3 tokens stores the key=value pair",
              processTokens({"INSERT", "key", "value"}, storage),
              "OK: stored key=value");
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     expectEq("insert command name is case-insensitive",
              processTokens({"InSeRt", "key", "value"}, storage),
              "OK: stored key=value");
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     expectEq("3 tokens with a command other than insert is rejected",
              processTokens({"GET", "key", "extra"}, storage),
              "ERR: invalid command");
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     processTokens({"INSERT", "key", "value"}, storage);
     expectEq("get with 2 tokens returns the stored value",
              processTokens({"GET", "key"}, storage), "OK: key=value");
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     processTokens({"INSERT", "key", "value"}, storage);
     expectEq("get command name is case-insensitive",
              processTokens({"gEt", "key"}, storage), "OK: key=value");
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     expectEq("get on a missing key is rejected",
              processTokens({"GET", "key"}, storage), "ERR: key not found");
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     processTokens({"INSERT", "key", "value"}, storage);
     expectEq("delete with 2 tokens removes the key",
              processTokens({"DELETE", "key"}, storage), "OK: deleted key");
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     processTokens({"INSERT", "key", "value"}, storage);
     expectEq("delete command name is case-insensitive",
              processTokens({"delete", "key"}, storage), "OK: deleted key");
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     expectEq("delete on a missing key is rejected",
              processTokens({"DELETE", "key"}, storage),
              "ERR: invalid delete key");
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     expectEq("2 tokens with an unrecognized command is rejected",
              processTokens({"FOO", "key"}, storage), "ERR: invalid command");
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     expectEq("scan with no stored data reports empty",
              processTokens({"SCAN"}, storage), "OK: scanning ... (empty)");
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     processTokens({"INSERT", "a", "1"}, storage);
     processTokens({"INSERT", "b", "2"}, storage);
     expectEq("scan with stored data returns every key=value pair",
@@ -190,25 +198,25 @@ void runProcessTokensTests() {
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     expectEq("scan command name is case-insensitive",
              processTokens({"scan"}, storage), "OK: scanning ... (empty)");
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     expectEq("1 token that isn't scan is rejected",
              processTokens({"FOO"}, storage), "ERR: invalid command");
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     expectEq("empty token list is rejected as invalid length",
              processTokens({}, storage), "ERR: invalid input length");
   }
 
   {
-    Storage storage;
+    Storage storage(makeTempStorageFile());
     expectEq("more than 3 tokens is rejected as invalid length",
              processTokens({"INSERT", "key", "value", "extra"}, storage),
              "ERR: invalid input length");
@@ -222,6 +230,10 @@ int main() {
   std::cout << std::endl;
   std::cout << (testsRun - testsFailed) << "/" << testsRun << " tests passed"
             << std::endl;
+
+  for (int i = 0; i < tempFileCounter; i++) {
+    std::remove(("test_tmp_" + std::to_string(i) + ".log").c_str());
+  }
 
   return testsFailed == 0 ? 0 : 1;
 }

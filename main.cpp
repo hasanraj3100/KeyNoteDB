@@ -19,7 +19,7 @@ bool handleInput(Storage &storage) {
 
 int main() {
 
-  Storage storage;
+  Storage storage("log.txt");
 
   while (handleInput(storage)) {
   }
