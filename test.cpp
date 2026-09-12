@@ -61,14 +61,23 @@ void expectEq(const std::string &testName, const std::string &actual,
 } // namespace
 
 void runTests() {
-  expectEq("insert with comma and space separates into 3 tokens",
+  // Only the very first space (splitting the command from the rest of the
+  // line) acts as a delimiter. After that, commas are the only delimiter,
+  // which is what lets a key/value contain spaces. Leading spaces (at the
+  // very start of the line, right after the command, or right after a
+  // comma) and trailing spaces (right before a comma or the end of the
+  // line) are both stripped -- only spaces in the interior of a token are
+  // kept.
+  expectEq("insert with comma and space separates into 3 tokens; the space "
+           "after the comma is a leading space and gets stripped",
            parseLine("INSERT key, value"), {"INSERT", "key", "value"});
 
   expectEq("insert with comma only, no space", parseLine("INSERT key,value"),
            {"INSERT", "key", "value"});
 
-  expectEq("insert with space only, no comma", parseLine("INSERT key value"),
-           {"INSERT", "key", "value"});
+  expectEq("space no longer splits tokens once the command has been split "
+           "off, so a key/value may contain spaces",
+           parseLine("INSERT key value"), {"INSERT", "key value"});
 
   expectEq("get command produces 2 tokens", parseLine("GET key"),
            {"GET", "key"});
@@ -84,34 +93,50 @@ void runTests() {
 
   expectEq("string of only commas produces no tokens", parseLine(",,,"), {});
 
-  expectEq("repeated spaces between tokens collapse to one split",
-           parseLine("INSERT   key    value"), {"INSERT", "key", "value"});
+  expectEq("leading spaces after the command are stripped, but interior "
+           "spaces are preserved literally, not collapsed",
+           parseLine("INSERT   key    value"), {"INSERT", "key    value"});
 
   expectEq("repeated commas between tokens collapse to one split",
            parseLine("INSERT key,,,value"), {"INSERT", "key", "value"});
 
-  expectEq("leading whitespace is ignored", parseLine("   INSERT key value"),
-           {"INSERT", "key", "value"});
+  expectEq("leading whitespace before the command is ignored",
+           parseLine("   INSERT key value"), {"INSERT", "key value"});
 
-  expectEq("trailing whitespace is ignored", parseLine("INSERT key value   "),
-           {"INSERT", "key", "value"});
+  expectEq("leading spaces right after the command are stripped",
+           parseLine("GET  key"), {"GET", "key"});
+
+  expectEq("trailing whitespace at the end of the line is ignored",
+           parseLine("INSERT key value   "), {"INSERT", "key value"});
 
   expectEq("trailing comma is ignored", parseLine("INSERT key,value,"),
            {"INSERT", "key", "value"});
 
-  expectEq("comma surrounded by spaces still separates tokens",
+  expectEq("space before a comma is trailing and gets stripped, and space "
+           "after the comma is leading and also gets stripped",
            parseLine("INSERT key , value"), {"INSERT", "key", "value"});
 
+  expectEq("leading spaces right after a comma are stripped even when "
+           "there is no space before the comma",
+           parseLine("INSERT  , value"), {"INSERT", "value"});
+
   expectEq("parseLine preserves the original case of every token",
-           parseLine("insert Key Value"), {"insert", "Key", "Value"});
+           parseLine("insert Key Value"), {"insert", "Key Value"});
 
-  expectEq("single-character tokens are kept", parseLine("a b c"),
-           {"a", "b", "c"});
+  expectEq("single-character tokens with a space between them merge into "
+           "one token",
+           parseLine("a b c"), {"a", "b c"});
 
-  expectEq("parseLine does not enforce a token-count limit itself; "
-           "that's handleInput's job, not the parser's",
+  expectEq("parseLine does not enforce a token-count limit itself; that's "
+           "handleInput's job, not the parser's -- and without a comma, "
+           "everything after the command is one token",
            parseLine("INSERT key value extra"),
-           {"INSERT", "key", "value", "extra"});
+           {"INSERT", "key value extra"});
+
+  expectEq("spaces inside a key/value are kept, but leading and trailing "
+           "spaces around a comma are stripped",
+           parseLine("INSERT key with spaces, value with trailing   ,another"),
+           {"INSERT", "key with spaces", "value with trailing", "another"});
 }
 
 void runProcessTokensTests() {
