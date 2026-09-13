@@ -1,0 +1,9 @@
+# Build output
+build/
+compile_commands.json
+.cache/
+
+# Runtime data (write-ahead log + snapshots)
+*.log
+*.snapshot
+*.snapshot.meta
