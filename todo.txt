@@ -1,0 +1,61 @@
+1. [done] pass file name for snapshots and snapshot meta, like: filename.snapshot, filename.snapshot.meta.
+2. [done] recover()'s manual comma-splitting loop replaced with a small named helper (SplitOnFirstComma in storage.cpp).
+3. [done] compact the log file once the snapshot is taken -- switched to truncating
+   the log to empty right after a snapshot write, instead of tracking a replay
+   offset. Comments in storage.h/README/tests updated to match.
+
+4. Storage constructor should fail loudly if the log file can't be opened,
+   instead of just logging to cerr and continuing with a dead stream.
+   - Decision made: throw (std::runtime_error, <stdexcept>) rather than
+     exit()/abort() directly -- keeps Storage testable (a test can try/catch
+     construction) and lets main.cpp decide how to present the failure.
+   - Still to decide: does main.cpp wrap `Storage storage(...)` in a
+     try/catch and print e.what() cleanly, or let it terminate() raw?
+     Pick one and implement it.
+
+5. Snapshot writes are not crash-safe -- a crash mid-write to
+   "<base>.snapshot" leaves a partial/corrupt file that RecoverFromSnapshot
+   will happily parse (see SplitOnFirstComma on a truncated line, e.g. "ke"
+   with no comma -> bogus key with empty value).
+   - Plan: write the new snapshot to a temp file in the SAME DIRECTORY as
+     "<base>.snapshot" (must be same filesystem for the rename below to be
+     atomic -- rename() across filesystems is not atomic), fsync it, then
+     atomically rename() it onto "<base>.snapshot". Old snapshot is only
+     ever replaced all-at-once, never partially -- no backup file or
+     corruption-detection logic needed.
+   - Implementation snag: std::ofstream has no portable fsync(). Need to
+     either drop to POSIX open()/write()/fsync()/close() for this one write,
+     or use C stdio (fopen/fwrite/fflush + fsync(fileno(f))/fclose). Decide
+     which before writing it.
+   - Stale ".snapshot.tmp" left over from a prior crash: confirm this is a
+     non-issue because the next write opens the temp file with truncate
+     semantics anyway.
+   - Optional/later, not blocking: fsync the directory fd after rename() too,
+     since the rename is a directory-metadata change that can itself be lost
+     on crash. Real DBs do this; skip it for now unless chasing full
+     power-loss durability.
+
+6. AppendToLog should report success/failure instead of being called and
+   ignored.
+   - Plan: make AppendToLog return bool; Put propagates it.
+   - Open design questions (answer before implementing, not obvious):
+     a) Consistency with #4: constructor throws on open failure -- should a
+        failed write (e.g. disk full mid-run) also throw, or is bool-that-
+        caller-must-check the right model for this one? Pick one policy and
+        apply it consistently, don't mix by accident.
+     b) Ordering bug: Put currently does `entries_[key] = value;` BEFORE
+        calling AppendToLog. If the log write fails, the in-memory map
+        already disagrees with disk (Get returns the new value, but a
+        restart would lose it). Should the log append happen first, and
+        entries_ only get mutated on success?
+     c) Delete's bool currently means "did the key exist" -- if Delete also
+        starts checking AppendToLog's result, what should the single bool
+        mean when the key existed AND the log write failed? These are two
+        different failure modes being squeezed into one bool -- resolve
+        this before coding it, not while coding it.
+
+7. (Noted during review, not yet planned) No fsync/durability guarantee on
+   the log itself either (AppendToLog only does std::endl, which flushes to
+   the OS but not to disk) -- same class of gap as #5, just for the log
+   instead of the snapshot. Consider once #5 is done, using the same
+   fsync approach decided there.

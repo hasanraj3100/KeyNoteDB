@@ -6,4 +6,3 @@ compile_commands.json
 # Runtime data (write-ahead log + snapshots)
 *.log
 *.snapshot
-*.snapshot.meta

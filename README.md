@@ -25,3 +25,26 @@ Adds persistence so data survives a restart:
 - Every INSERT/DELETE is appended to a log file.
 - On startup, the log is replayed to rebuild the in-memory map.
 - The parser now allows keys/values to contain spaces (e.g. `INSERT key, a value with spaces`), trimming leading/trailing spaces around the comma.
+- Once enough operations have accumulated, the in-memory map is snapshotted to disk and the log is truncated back to empty, so the next startup only has to replay the (now short) log on top of the snapshot instead of the whole history.
+
+# Project Layout
+
+```
+include/kvstore/   public headers (parser, storage, command_processor)
+src/               implementation + main.cpp (the CLI entry point)
+tests/             a small hand-rolled test runner, no external framework
+```
+
+Everything lives under the `kvstore` namespace.
+
+# Building & Running
+
+```
+make            # builds ./build/kvstore
+make test       # builds and runs ./build/kvstore_tests
+make clean
+```
+
+Running `./build/kvstore` starts a REPL reading commands from stdin. It
+persists to `kvstore_data.log` (plus `kvstore_data.snapshot` once a
+snapshot has been taken) in the current directory.
