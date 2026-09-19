@@ -22,9 +22,14 @@ bool HandleNextLine(Storage& storage) {
 }  // namespace kvstore
 
 int main() {
-  kvstore::Storage storage("kvstore_data");
+  try {
+    kvstore::Storage storage("kvstore_data");
 
-  while (kvstore::HandleNextLine(storage)) {
+    while (kvstore::HandleNextLine(storage)) {
+    }
+  } catch (const std::exception& e) {
+    std::cerr << e.what() << std::endl;
+    return 1;
   }
 
   return 0;

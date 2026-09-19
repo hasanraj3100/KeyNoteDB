@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <stdexcept>
 #include <utility>
 
 #include "kvstore/parser.h"
@@ -25,7 +26,8 @@ Storage::Storage(const std::string &base_path)
     : log_path_(base_path + ".log"), snapshot_path_(base_path + ".snapshot") {
   log_file_.open(log_path_, std::ios::in | std::ios::out | std::ios::app);
   if (!log_file_) {
-    std::cerr << "kvstore: failed to open log file " << log_path_ << std::endl;
+    throw std::runtime_error("kvstore: failed to open log file " +
+                              log_path_);
   }
 
   RecoverFromSnapshot();

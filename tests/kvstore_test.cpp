@@ -285,6 +285,21 @@ void RunStoragePersistenceTests() {
     ExpectEq("data survives restart after a snapshot has been taken",
              reopened.Get("key11").value_or("<missing>"), "11");
   }
+
+  {
+    // A base path inside a nonexistent directory can never have its log
+    // file opened, so construction should fail loudly instead of silently
+    // continuing with a dead stream.
+    bool threw = false;
+    try {
+      Storage storage("nonexistent_dir/base");
+    } catch (const std::runtime_error&) {
+      threw = true;
+    }
+    ExpectEq("constructing Storage with an unopenable log file throws "
+             "std::runtime_error",
+             threw ? "threw" : "did not throw", "threw");
+  }
 }
 
 }  // namespace

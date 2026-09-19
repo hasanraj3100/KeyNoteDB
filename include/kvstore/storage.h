@@ -28,6 +28,7 @@ class Storage {
 public:
   // base_path is a filesystem path prefix; the store derives
   // "<base_path>.log" and "<base_path>.snapshot" from it.
+  // Throws std::runtime_error if the log file can't be opened.
   explicit Storage(const std::string &base_path);
 
   bool Put(const std::string &key, const std::string &value);
