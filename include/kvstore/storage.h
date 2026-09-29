@@ -1,9 +1,9 @@
 #pragma once
 
 #include <fstream>
-#include <map>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -48,7 +48,7 @@ private:
   void ApplyPut(const std::string &key, const std::string &value);
   void ApplyDelete(const std::string &key);
 
-  std::map<std::string, std::string> entries_;
+  std::unordered_map<std::string, std::string> entries_;
   std::fstream log_file_;
 
   std::string log_path_;

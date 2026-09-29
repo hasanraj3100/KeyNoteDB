@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <cstdio>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -27,6 +29,23 @@ void RemoveAllTempFiles() {
     std::remove((base + ".log").c_str());
     std::remove((base + ".snapshot").c_str());
   }
+}
+
+// SCAN output order is unspecified (storage is hash-based), so tests sort
+// the entry lines after the header before comparing.
+std::string SortScanEntries(const std::string& scan_output) {
+  std::istringstream in(scan_output);
+  std::string header;
+  std::getline(in, header);
+
+  std::vector<std::string> entries;
+  std::string line;
+  while (std::getline(in, line)) entries.push_back(line);
+  std::sort(entries.begin(), entries.end());
+
+  std::string out = header + "\n";
+  for (const auto& entry : entries) out += entry + "\n";
+  return out;
 }
 
 std::string ToString(const std::vector<std::string>& tokens) {
@@ -227,7 +246,7 @@ void RunProcessCommandTests() {
     ProcessCommand({"INSERT", "a", "1"}, storage);
     ProcessCommand({"INSERT", "b", "2"}, storage);
     ExpectEq("scan with stored data returns every key=value pair",
-             ProcessCommand({"SCAN"}, storage),
+             SortScanEntries(ProcessCommand({"SCAN"}, storage)),
              "OK: scanning ...\n a=1\n b=2\n");
   }
 

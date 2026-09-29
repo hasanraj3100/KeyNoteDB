@@ -192,7 +192,8 @@ void Storage::MaybeWriteSnapshot() {
     dir_ok = false;
 
   if (!dir_ok) {
-    std::cerr << "kvstore: failed to fsync directory " << parent.string() << '\n';
+    std::cerr << "kvstore: failed to fsync directory " << parent.string()
+              << '\n';
     return;
   }
 
