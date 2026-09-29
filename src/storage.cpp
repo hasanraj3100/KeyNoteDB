@@ -1,9 +1,15 @@
 #include "kvstore/storage.h"
 
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
+#include <unistd.h>
 #include <utility>
 
 #include "kvstore/parser.h"
@@ -26,8 +32,7 @@ Storage::Storage(const std::string &base_path)
     : log_path_(base_path + ".log"), snapshot_path_(base_path + ".snapshot") {
   log_file_.open(log_path_, std::ios::in | std::ios::out | std::ios::app);
   if (!log_file_) {
-    throw std::runtime_error("kvstore: failed to open log file " +
-                              log_path_);
+    throw std::runtime_error("kvstore: failed to open log file " + log_path_);
   }
 
   RecoverFromSnapshot();
@@ -113,21 +118,107 @@ void Storage::MaybeWriteSnapshot() {
   if (unsnapshotted_op_count_ < kSnapshotThreshold)
     return;
 
-  std::ofstream snapshot_file(snapshot_path_, std::ios::trunc);
-  if (!snapshot_file) {
-    std::cerr << "kvstore: failed to write snapshot for " << log_path_
-              << std::endl;
+  const std::string temp_path = snapshot_path_ + ".temp";
+
+  std::unique_ptr<FILE, decltype(&std::fclose)> file(
+      std::fopen(temp_path.c_str(), "w"), &std::fclose);
+
+  if (!file) {
+    std::cerr << "kvstore: failed to open temp snapshot " << temp_path << ": "
+              << strerror(errno) << '\n';
     return;
   }
 
+  bool ok = true;
+
   for (const auto &[key, value] : entries_) {
-    snapshot_file << key << "," << value << "\n";
+    int written = fprintf(file.get(), "%s,%s\n", key.c_str(), value.c_str());
+
+    if (written < 0) {
+      std::cerr << "kvstore: failed to write snapshot " << temp_path << ": "
+                << strerror(errno) << '\n';
+      ok = false;
+      break;
+    }
   }
 
-  unsnapshotted_op_count_ = 0;
+  if (ok && fflush(file.get()) != 0) {
+    std::cerr << "kvstore: failed to flush snapshot " << temp_path << ": "
+              << strerror(errno) << '\n';
+    ok = false;
+  }
 
-  // clearing the log file since snapshot has the data
-  std::filesystem::resize_file(log_path_, 0);
+  if (ok && fsync(fileno(file.get())) != 0) {
+    std::cerr << "kvstore: failed to fsync snapshot " << temp_path << ": "
+              << strerror(errno) << '\n';
+    ok = false;
+  }
+
+  if (fclose(file.release()) != 0) {
+    std::cerr << "kvstore: failed to close snapshot " << temp_path << ": "
+              << strerror(errno) << '\n';
+    ok = false;
+  }
+
+  if (!ok) {
+    remove(temp_path.c_str());
+    return;
+  }
+
+  if (rename(temp_path.c_str(), snapshot_path_.c_str()) != 0) {
+    std::cerr << "kvstore: failed to rename " << temp_path << " to "
+              << snapshot_path_ << ": " << strerror(errno) << '\n';
+    remove(temp_path.c_str());
+    return;
+  }
+
+  std::filesystem::path parent =
+      std::filesystem::path(snapshot_path_).parent_path();
+
+  if (parent.empty())
+    parent = ".";
+
+  int dir_fd = open(parent.c_str(), O_RDONLY | O_DIRECTORY);
+
+  if (dir_fd < 0) {
+    std::cerr << "kvstore: failed to open directory " << parent.string() << ": "
+              << strerror(errno) << '\n';
+    return;
+  }
+
+  bool dir_ok = (fsync(dir_fd) == 0);
+
+  if (close(dir_fd) != 0)
+    dir_ok = false;
+
+  if (!dir_ok) {
+    std::cerr << "kvstore: failed to fsync directory " << parent.string() << '\n';
+    return;
+  }
+
+  int wal_fd = open(log_path_.c_str(), O_WRONLY);
+
+  if (wal_fd < 0) {
+    std::cerr << "kvstore: failed to open log " << log_path_
+              << " for truncation: " << strerror(errno) << '\n';
+    return;
+  }
+
+  bool wal_ok = (ftruncate(wal_fd, 0) == 0);
+
+  if (wal_ok && fsync(wal_fd) != 0)
+    wal_ok = false;
+
+  if (close(wal_fd) != 0)
+    wal_ok = false;
+
+  if (!wal_ok) {
+    std::cerr << "kvstore: failed to truncate log " << log_path_ << '\n';
+    return;
+  }
+
+  log_file_.clear();
+  unsnapshotted_op_count_ = 0;
 }
 
 } // namespace kvstore
